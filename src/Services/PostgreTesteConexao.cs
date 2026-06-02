@@ -12,9 +12,9 @@ public class TesteConexao
         _configuration = configuration;
     }
 
-    public async Task<List<Empresa>> PegarPessoas()
+    public async Task<List<Empresa>> PegarEmpresas()
     {
-        var pessoas = new List<Empresa>();
+        var empresas = new List<Empresa>();
 
         var connectionString =
             _configuration.GetConnectionString("Postgres");
@@ -34,7 +34,7 @@ public class TesteConexao
 
         while (await reader.ReadAsync())
         {
-            pessoas.Add(new Empresa
+            empresas.Add(new Empresa
             {
                 Nome = reader.GetString(0),
                 Senha = reader.GetString(1),
@@ -42,6 +42,39 @@ public class TesteConexao
             });
         }
 
-        return pessoas;
+        return empresas;
+    }
+
+    public async Task<List<ReservasMes>> PegarReservas()
+    {
+        var reservas = new List<ReservasMes>();
+
+        var connectionString =
+            _configuration.GetConnectionString("Postgres");
+
+        await using var connection =
+            new NpgsqlConnection(connectionString);
+
+        await connection.OpenAsync();
+
+        var command = new NpgsqlCommand(
+            "SELECT * FROM reservas_mes",
+            connection
+        );
+
+        await using var reader =
+            await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            reservas.Add(new ReservasMes
+            {
+                Empresa = reader.GetString(0),
+                Mes = reader.GetString(1),
+                NroReservas = reader.GetInt32(2)
+            });
+        }
+
+        return reservas;
     }
 }
