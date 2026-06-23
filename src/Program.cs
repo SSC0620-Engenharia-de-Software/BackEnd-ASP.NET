@@ -34,9 +34,14 @@ app.UseCors("AllowFrontend");
 
 //app.UseHttpsRedirection();
 
-app.MapGet("/Teste", async (TesteConexao db) =>
+app.MapGet("/TesteEmpresa", async (TesteConexao db) =>
 {
-    return await db.PegarPessoas();
+    return await db.PegarEmpresas();
+});
+
+app.MapGet("/TesteReserva", async (TesteConexao db) =>
+{
+    return await db.PegarReservas();
 });
 
 app.MapControllers();
