@@ -5,7 +5,13 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace src.Models;
 
-public class RelatorioEmpresasDTO
+public class TipoEmpresaDTO
+{
+    public int IdTipo { get; set; }
+    public string NomeTipo { get; set; }
+}
+
+public class RelatorioNumeroEmpresasDTO
 {
     public DateTime MesAnalise { get; set; }
     public int QuantidadeEmpresas { get; set; }
@@ -21,6 +27,17 @@ public class RelatorioDiariaMediaDTO
 {
     public DateTime MesAnalise { get; set; }
     public decimal ValorDiaria { get; set; }
+}
+
+public class PesquisaHospedagemDTO
+{
+    public int IdEmpresa { get; set; }
+    public DateTime Data { get; set; }
+    public decimal? TaxaOcupacao { get; set; }
+    public decimal? DiariaMedia { get; set; }
+    public int? QtdHospedes { get; set; }
+    public int? QtdLeitos { get; set; }
+    public int? QtdUhs { get; set; }
 }
 
 public class EmpresaCompletaDTO

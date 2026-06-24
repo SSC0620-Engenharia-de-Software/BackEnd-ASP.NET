@@ -35,6 +35,20 @@ app.UseCors("AllowFrontend");
 
 //app.UseHttpsRedirection();
 
+app.MapGet("/TiposEmpresa", async (Conexao db) =>
+{
+    try
+    {
+        var res = await db.PegarTiposEmpresas();
+
+        return Results.Ok(res);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem($"Erro ao buscar lista de tipos de empresa: {ex.Message}");
+    }
+});
+
 app.MapGet("/Estatisticas/MesMaisAntigo", async (Conexao db) =>
 {
     try
@@ -129,7 +143,24 @@ app.MapGet("/DadosEmpresa", async (int id, Conexao db) =>
         // Chama a função do banco passando o objeto que chegou do frontend
         EmpresaCompletaDTO res = await db.PegarEmpresaCompletaPorId(id);
         
-        // Retorna o status HTTP 201 (Created) ou 200 (Ok)
+        // Retorna o status HTTP 200 (Ok)
+        return Results.Ok(res);
+    }
+    catch (Exception ex)
+    {
+        // Se der erro no banco, retorna um erro 500 para o frontend entender
+        return Results.Problem($"Erro ao fazer os dados da empresa: {ex.Message}");
+    }
+});
+
+app.MapGet("/DadosPesquisaHospedagem", async (int id, Conexao db) =>
+{
+    try
+    {
+        // Chama a função do banco passando o objeto que chegou do frontend
+        Dictionary<int, List<PesquisaHospedagemDTO>> res = await db.PegarHistoricoPesquisaHospedagem();
+        
+        // Retorna o status 200 (Ok)
         return Results.Ok(res);
     }
     catch (Exception ex)
@@ -156,20 +187,23 @@ app.MapPost("/Login", async (LoginRequestDTO login, Conexao db) =>
     }
 });
 
-app.MapPost("/AtualizarEmpresa", async (EmpresaCompletaDTO novosDados, Conexao db) =>
+app.MapPost("/CadastrarPesquisaHospedagem", async (PesquisaHospedagemDTO dados, Conexao db) =>
 {
     try
     {
-        // Chama a função do banco passando o objeto que chegou do frontend
-        await db.AtualizarEmpresaCompleta(novosDados);
+        // Executa a inserção e recebe o ID do novo registro
+        int novoId = await db.InserirPesquisaHospedagem(dados);
         
-        // Retorna o status HTTP 200 (Ok)
-        return Results.Ok();
+        // Retorna o status 201 Created com o link de localização ajustado para o padrão
+        return Results.Created($"/PesquisaHospedagem?id={novoId}", new { 
+            id = novoId, 
+            mensagem = "Pesquisa registrada com sucesso!" 
+        });
     }
     catch (Exception ex)
     {
-        // Se der erro no banco, retorna um erro 500 para o frontend entender
-        return Results.Problem($"Erro ao atualizar os dados da empresa: {ex.Message}");
+        // Captura falhas estruturais ou de duplicidade retornando o erro formatado
+        return Results.Problem($"Erro ao registrar a pesquisa: {ex.Message}");
     }
 });
 
@@ -196,7 +230,24 @@ app.MapPost("/CadastrarEmpresa", async (EmpresaCompletaDTO novosDados, Conexao d
     }
     catch (Exception ex)
     {
-        return Results.Problem($"Erro crítico ao efetuar o cadastro: {ex.Message}");
+        return Results.Problem($"Erro ao efetuar o cadastro da empresa: {ex.Message}");
+    }
+});
+
+app.MapPost("/AtualizarEmpresa", async (EmpresaCompletaDTO novosDados, Conexao db) =>
+{
+    try
+    {
+        // Chama a função do banco passando o objeto que chegou do frontend
+        await db.AtualizarEmpresaCompleta(novosDados);
+        
+        // Retorna o status HTTP 200 (Ok)
+        return Results.Ok();
+    }
+    catch (Exception ex)
+    {
+        // Se der erro no banco, retorna um erro 500 para o frontend entender
+        return Results.Problem($"Erro ao atualizar os dados da empresa: {ex.Message}");
     }
 });
 
