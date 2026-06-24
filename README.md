@@ -27,7 +27,6 @@ project-root/
     │   └── launchSettings.json
     │
     ├── Services/
-    │   └── PostgreTesteConexao.cs
     │
     ├── Models/
     │
