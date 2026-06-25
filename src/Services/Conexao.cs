@@ -26,6 +26,7 @@ public class Conexao
 
     public async Task<List<T>> PegarTabela<T>(string nomeTabela)
     {
+        // Aqui já estava correto
         await using var connection = await CriarConexao();
         
         var resultado = await connection.QueryAsync<T>($"SELECT * FROM {nomeTabela}");        
@@ -34,35 +35,27 @@ public class Conexao
 
     private bool MudouAlgo<T>(T? atual, T novo)
     {
-        // Se o novo for nulo, então nada está sendo atualizado
         if (novo == null)
             return false;
 
-        // Se não existia registro anterior e agora tem, com certeza é uma novidade
         if (atual == null)
             return true;
 
-        // Pega todas as propriedades públicas da classe
         PropertyInfo[] propriedades = typeof(T).GetProperties();
 
         foreach (PropertyInfo prop in propriedades)
         {
-            // Ignoramos a propriedade de Data, pois ela não é um dado preenchido pelo usuário
             if (prop.Name == "Data") continue;
 
             var valorAtual = prop.GetValue(atual);
             var valorNovo = prop.GetValue(novo);
 
-            // O método Equals lida bem com tipos primitivos, strings, nulos e booleanos
             if (!Equals(valorAtual, valorNovo))
             {
-                // Se encontrou UMA diferença, já sabemos que precisa atualizar. 
-                // Pode parar o laço e retornar.
                 return true;
             }
         }
 
-        // Se varreu todas as propriedades e tudo é igual, não teve mudança.
         return false;
     }
 
@@ -73,17 +66,14 @@ public class Conexao
 
     public async Task<DateTime?> PegarRegistroMaisAntigo(string nomeTabela, string nomeColunaData = "data")
     {
-        NpgsqlConnection conn = await CriarConexao();
+        // CORRIGIDO: Adicionado await using
+        await using var conn = await CriarConexao();
 
-        // Utilizamos a função MIN() do SQL para pegar a menor data (a mais antiga)
         var query = $"SELECT MIN({nomeColunaData}) FROM {nomeTabela}";
 
         await using var command = new NpgsqlCommand(query, conn);
-
-        // ExecuteScalarAsync é perfeito para consultas que retornam apenas 1 linha e 1 coluna
         var resultado = await command.ExecuteScalarAsync();
 
-        // Verificamos se o resultado não é nulo (caso a tabela esteja completamente vazia)
         if (resultado != DBNull.Value && resultado != null)
         {
             return Convert.ToDateTime(resultado);
@@ -95,9 +85,9 @@ public class Conexao
     public async Task<List<RelatorioNumeroEmpresasDTO>> GerarEvolucaoNumeroEmpresas(DateTime dataInicio, string nomeTipo = null)
     {
         var relatorio = new List<RelatorioNumeroEmpresasDTO>();
-        var conn = await CriarConexao();
+        // CORRIGIDO: Adicionado await using
+        await using var conn = await CriarConexao();
 
-        // Se um tipo foi enviado, adicionamos a restrição. Senão, deixamos em branco.
         var filtroTipo = string.IsNullOrEmpty(nomeTipo) ? "" : " AND e.nometipo = @nomeTipo ";
 
         var query = $@"
@@ -122,7 +112,6 @@ public class Conexao
         
         command.Parameters.AddWithValue("dataInicio", dataInicio);
 
-        // Só adicionamos o parâmetro @nomeTipo se ele realmente for ser usado no SQL
         if (!string.IsNullOrEmpty(nomeTipo))
         {
             command.Parameters.AddWithValue("nomeTipo", nomeTipo);
@@ -145,15 +134,13 @@ public class Conexao
     public async Task<List<RelatorioLeitosDTO>> GerarEvolucaoLeitos(DateTime dataInicio, string nomeTipo = null)
     {
         var relatorio = new List<RelatorioLeitosDTO>();
-        NpgsqlConnection conn = await CriarConexao();
+        // CORRIGIDO: Adicionado await using
+        await using var conn = await CriarConexao();
 
-        // Se um tipo foi enviado, adicionamos a restrição. Senão, deixamos em branco.
         var filtroTipo = string.IsNullOrEmpty(nomeTipo) ? "" : " AND e.nometipo = @nomeTipo ";
 
-        // A query com LATERAL JOIN. Note que substituímos a data inicial chumbada pelo parâmetro @dataInicio
         var query = $@"
             WITH Meses AS (
-                -- Gera sempre o primeiro dia de cada mês
                 SELECT GENERATE_SERIES(@dataInicio::DATE, CURRENT_DATE, '1 month')::DATE AS mes_analise
             ),
             Empresas AS (
@@ -171,7 +158,6 @@ public class Conexao
                 FROM EMPRESA_ESTRUTURA est 
                 WHERE est.idempresa = e.idempresa 
                 {filtroTipo}
-                -- AJUSTE: Soma 1 mês e subtrai 1 dia para pegar o ÚLTIMO dia do mês analisado
                 AND est.data <= (m.mes_analise + interval '1 month' - interval '1 day')::DATE
                 ORDER BY est.data DESC 
                 LIMIT 1
@@ -181,10 +167,8 @@ public class Conexao
 
         await using var command = new NpgsqlCommand(query, conn);
         
-        // Passando o parâmetro de data para o PostgreSQL
         command.Parameters.AddWithValue("dataInicio", dataInicio);
 
-        // Só adicionamos o parâmetro @nomeTipo se ele realmente for ser usado no SQL
         if (!string.IsNullOrEmpty(nomeTipo))
         {
             command.Parameters.AddWithValue("nomeTipo", nomeTipo);
@@ -197,9 +181,6 @@ public class Conexao
             relatorio.Add(new RelatorioLeitosDTO
             {
                 MesAnalise = reader.GetDateTime(0),
-                
-                // O Npgsql converte campos numéricos agregados (SUM) do Postgres geralmente para Int64 (long)
-                // Usamos Convert.ToInt32 por segurança caso o C# reclame do casting direto
                 TotalLeitos = Convert.ToInt32(reader.GetValue(1)) 
             });
         }
@@ -210,7 +191,8 @@ public class Conexao
     public async Task<List<RelatorioDiariaMediaDTO>> GerarEvolucaoDiariaMedia(DateTime dataInicio, string? nomeTipo = null)
     {
         var relatorio = new List<RelatorioDiariaMediaDTO>();
-        var conn = await CriarConexao();
+        // CORRIGIDO: Adicionado await using
+        await using var conn = await CriarConexao();
 
         var filtroTipo = string.IsNullOrEmpty(nomeTipo) ? "" : " AND e.nometipo = @nomeTipo ";
 
@@ -225,7 +207,6 @@ public class Conexao
             )
             SELECT 
                 m.mes_analise,
-                -- CORREÇÃO AQUI: NULLIF transforma 0 em NULL. O AVG ignora NULLs automaticamente na divisão!
                 COALESCE(ROUND(AVG(NULLIF(historico.diariamedia, 0)), 2), 0) AS media_diaria_cidade
             FROM Meses m
             CROSS JOIN Empresas e
@@ -264,13 +245,24 @@ public class Conexao
         return relatorio;
     }
 
-    public async Task<Dictionary<int, List<PesquisaHospedagemDTO>>> PegarHistoricoPesquisaHospedagem()
+    public async Task<Dictionary<int, List<PesquisaHospedagemColunaDTO>>> PegarHistoricoDeUmaColuna(string nomeColuna)
     {
-        var historicoAgrupado = new Dictionary<int, List<PesquisaHospedagemDTO>>();
-        var conn = await CriarConexao(); 
+        var colunasPermitidas = new HashSet<string> 
+        { 
+            "taxaocup", "diariamedia", "qtdhospedes", "qtdleitos", "qtduhs" 
+        };
 
-        var query = @"
-            SELECT idempresa, data, taxaocup, diariamedia, qtdhospedes, qtdleitos, qtduhs 
+        if (!colunasPermitidas.Contains(nomeColuna.ToLower()))
+        {
+            throw new ArgumentException("Nome de coluna inválido ou não autorizado.");
+        }
+
+        var historicoAgrupado = new Dictionary<int, List<PesquisaHospedagemColunaDTO>>();
+        // CORRIGIDO: Adicionado await using
+        await using var conn = await CriarConexao();
+
+        var query = $@"
+            SELECT idempresa, data, {nomeColuna} AS valor_dinamico 
             FROM PESQUISA_HOSPEDAGEM 
             ORDER BY idempresa ASC, data ASC;";
 
@@ -281,24 +273,17 @@ public class Conexao
         {
             var idEmpresa = Convert.ToInt32(reader["idempresa"]);
             
-            var dto = new PesquisaHospedagemDTO
+            var dto = new PesquisaHospedagemColunaDTO
             {
-                IdEmpresa = idEmpresa,
                 Data = Convert.ToDateTime(reader["data"]),
-                TaxaOcupacao = reader["taxaocup"] != DBNull.Value ? Convert.ToDecimal(reader["taxaocup"]) : null,
-                DiariaMedia = reader["diariamedia"] != DBNull.Value ? Convert.ToDecimal(reader["diariamedia"]) : null,
-                QtdHospedes = reader["qtdhospedes"] != DBNull.Value ? Convert.ToInt32(reader["qtdhospedes"]) : null,
-                QtdLeitos = reader["qtdleitos"] != DBNull.Value ? Convert.ToInt32(reader["qtdleitos"]) : null,
-                QtdUhs = reader["qtduhs"] != DBNull.Value ? Convert.ToInt32(reader["qtduhs"]) : null
+                Valor = reader["valor_dinamico"] != DBNull.Value ? Convert.ToDecimal(reader["valor_dinamico"]) : null
             };
 
-            // Se a empresa ainda não tem uma lista no dicionário, nós criamos a "gaveta" dela
             if (!historicoAgrupado.ContainsKey(idEmpresa))
             {
-                historicoAgrupado[idEmpresa] = new List<PesquisaHospedagemDTO>();
+                historicoAgrupado[idEmpresa] = new List<PesquisaHospedagemColunaDTO>();
             }
             
-            // Adiciona o mês atual na linha do tempo da empresa
             historicoAgrupado[idEmpresa].Add(dto);
         }
 
@@ -307,7 +292,8 @@ public class Conexao
 
     public async Task<EmpresaCompletaDTO?> PegarEmpresaCompletaPorId(int idEmpresa)
     {
-        var conn = await CriarConexao();
+        // CORRIGIDO: Adicionado await using
+        await using var conn = await CriarConexao();
 
         var query = @"
             SELECT 
@@ -475,10 +461,9 @@ public class Conexao
 
     public async Task<ResultadoLoginDTO> ValidarLogin(LoginRequestDTO loginDados)
     {
-        NpgsqlConnection conn = await CriarConexao();
+        // CORRIGIDO: Adicionado await using
+        await using var conn = await CriarConexao();
 
-        // Adicionamos a segunda coluna em todos os SELECTs. 
-        // Usamos NULL::INTEGER para forçar o tipo correto no Postgres.
         var query = @"
             SELECT 'Visitante' AS Categoria, NULL::INTEGER AS IdEmpresa 
             FROM PESSOA_VISITANTE WHERE idpessoa::text = @id::text AND senha::text = @senha::text
@@ -495,26 +480,20 @@ public class Conexao
 
         await using var command = new NpgsqlCommand(query, conn);
 
-        // Passando os parâmetros com segurança contra SQL Injection
         command.Parameters.AddWithValue("id", loginDados.Id);
         command.Parameters.AddWithValue("senha", loginDados.Senha);
 
         await using var reader = await command.ExecuteReaderAsync();
 
-        // Se o ReadAsync() for verdadeiro, achou o usuário em alguma das tabelas
         if (await reader.ReadAsync())
         {
             return new ResultadoLoginDTO
             {
-                // Pega a primeira coluna (Categoria)
                 Categoria = reader.GetString(0),
-                
-                // Pega a segunda coluna (IdEmpresa), verificando se é nula no banco primeiro
                 IdEmpresa = reader.IsDBNull(1) ? null : reader.GetInt32(1)
             };
         }
 
-        // Se não entrou no IF, as credenciais estão incorretas
         return new ResultadoLoginDTO 
         { 
             Categoria = "Invalido", 
@@ -524,9 +503,9 @@ public class Conexao
 
     public async Task<int> InserirPesquisaHospedagem(PesquisaHospedagemDTO dto)
     {
-        var conn = await CriarConexao();
+        // CORRIGIDO: Adicionado await using
+        await using var conn = await CriarConexao();
 
-        // Adicionado o RETURNING para obter o ID gerado automaticamente (substitua 'idpesquisa' pelo nome real da coluna PK caso mude)
         var query = @"
             INSERT INTO PESQUISA_HOSPEDAGEM (
                 idempresa, data, taxaocup, diariamedia, qtdhospedes, qtdleitos, qtduhs
@@ -538,80 +517,75 @@ public class Conexao
         {
             await using var command = new NpgsqlCommand(query, conn);
             
-            // Parâmetros obrigatórios
             command.Parameters.AddWithValue("idempresa", dto.IdEmpresa);
-            command.Parameters.AddWithValue("data", dto.Data);
+            command.Parameters.AddWithValue("data", dto.Data.Date);
             
-            // Parâmetros opcionais com tratamento de nulos
             command.Parameters.AddWithValue("taxaocup", dto.TaxaOcupacao ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("diariamedia", dto.DiariaMedia ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("qtdhospedes", dto.QtdHospedes ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("qtdleitos", dto.QtdLeitos ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("qtduhs", dto.QtdUhs ?? (object)DBNull.Value);
 
-            // Executa o comando e recupera o ID numérico gerado, removendo a análise de linhas afetadas
             var idGerado = Convert.ToInt32(await command.ExecuteScalarAsync());
-            
             return idGerado;
+        }
+        catch (PostgresException ex) when (ex.SqlState == "23505")
+        {
+            throw new Exception("Já existe um fechamento de pesquisa para esta empresa nesta mesma data. Utilize a atualização.");
         }
         catch (Exception)
         {
-            // Caso ocorra qualquer erro (como restrição UNIQUE ou FK), a exceção é lançada diretamente
             throw;
         }
     }
 
-    public async Task<bool> AtualizarPesquisaHospedagem(PesquisaHospedagemDTO dto)
+    public async Task<bool> AtualizarColunaPesquisaHospedagem(int idEmpresa, string nomeColuna, PesquisaHospedagemColunaDTO novoValor)
     {
-        var conn = await CriarConexao();
+        var colunasPermitidas = new HashSet<string> 
+        { 
+            "taxaocup", "diariamedia", "qtdhospedes", "qtdleitos", "qtduhs" 
+        };
 
+        if (!colunasPermitidas.Contains(nomeColuna.ToLower()))
+        {
+            throw new ArgumentException("Nome de coluna inválido ou não autorizado.");
+        }
+
+        // CORRIGIDO: Adicionado await using
+        await using var conn = await CriarConexao();
         await using var transaction = await conn.BeginTransactionAsync();
+
         try
         {
-            var query = @"
+            var query = $@"
                 UPDATE PESQUISA_HOSPEDAGEM 
-                SET taxaocup = @taxaocup, 
-                    diariamedia = @diariamedia, 
-                    qtdhospedes = @qtdhospedes, 
-                    qtdleitos = @qtdleitos, 
-                    qtduhs = @qtduhs
+                SET {nomeColuna} = @novoValor
                 WHERE idempresa = @idempresa AND data = @data;";
 
             await using var command = new NpgsqlCommand(query, conn, transaction);
             
-            command.Parameters.AddWithValue("idempresa", dto.IdEmpresa);
-            command.Parameters.AddWithValue("data", dto.Data);
-            command.Parameters.AddWithValue("taxaocup", dto.TaxaOcupacao ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("diariamedia", dto.DiariaMedia ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("qtdhospedes", dto.QtdHospedes ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("qtdleitos", dto.QtdLeitos ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("qtduhs", dto.QtdUhs ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("idempresa", idEmpresa);
+            command.Parameters.AddWithValue("data", novoValor.Data.Date);
+            command.Parameters.AddWithValue("novoValor", novoValor.Valor ?? (object)DBNull.Value);
 
             var linhasAfetadas = await command.ExecuteNonQueryAsync();
             
             if (linhasAfetadas == 1)
             {
-                // Tudo perfeito. Efetiva a alteração no disco do banco de dados.
                 await transaction.CommitAsync();
                 return true;
             }
             else if (linhasAfetadas > 1)
             {
-                // Ocorreu a anomalia de duplicação!
-                // Desfaz o UPDATE imediatamente antes de estourar o erro.
                 await transaction.RollbackAsync();
-                throw new Exception("ALERTA CRÍTICO: Anomalia de dados. Mais de um registro modificado. O banco sofreu ROLLBACK por segurança.");
+                throw new Exception("ALERTA CRÍTICO: Anomalia de dados. Mais de um registro modificado. ROLLBACK acionado.");
             }
             
-            // Se afetou 0 linhas, o registro não existia.
-            // Desfaz a transação vazia e retorna false.
             await transaction.RollbackAsync();
             return false; 
         }
         catch
         {
-            // Se qualquer exceção for lançada (ex: conversão de tipos, queda de rede),
-            // garante que a transação não fique travada e desfaz tudo.
             await transaction.RollbackAsync();
             throw;
         }
@@ -619,20 +593,15 @@ public class Conexao
 
     public async Task<int> InserirEmpresaCompleta(EmpresaCompletaDTO novaEmpresa)
     {
-        var conn = await CriarConexao();
-
-        // Inicia a transação para garantir que ou tudo é inserido ou nada é salvo
+        // CORRIGIDO: Adicionado await using
+        await using var conn = await CriarConexao();
         await using var transaction = await conn.BeginTransactionAsync();
 
         try
         {
-            // Função auxiliar interna para tratar valores nulos
             void AddParam(NpgsqlCommand cmd, string nome, object? valor) 
                 => cmd.Parameters.AddWithValue(nome, valor ?? DBNull.Value);
 
-            // ==========================================
-            // 1. INSERÇÃO: EMPRESA_GERAL
-            // ==========================================
             var sqlGeral = @"
                 INSERT INTO EMPRESA_GERAL (
                     idtipo, razao_social, nome_fantasia, data_abertura, proprietarios, cnae, 
@@ -669,13 +638,9 @@ public class Conexao
                 AddParam(cmdGeral, "func_f", dg.FuncFixos);
                 AddParam(cmdGeral, "func_t", dg.FuncTemporarios);
 
-                // Executa e recupera o ID numérico gerado pelo SERIAL/IDENTITY do Postgres
                 idEmpresaGerado = Convert.ToInt32(await cmdGeral.ExecuteScalarAsync());
             }
 
-            // ==========================================
-            // 2. INSERÇÃO: EMPRESA_ESTRUTURA
-            // ==========================================
             if (novaEmpresa.EstruturaAtual != null)
             {
                 var sqlEst = @"
@@ -709,9 +674,6 @@ public class Conexao
                 await cmdEst.ExecuteNonQueryAsync();
             }
 
-            // ==========================================
-            // 3. INSERÇÃO: EMPRESA_SERVICOS
-            // ==========================================
             if (novaEmpresa.Servicos != null)
             {
                 var sqlSrv = @"
@@ -744,9 +706,6 @@ public class Conexao
                 await cmdSrv.ExecuteNonQueryAsync();
             }
 
-            // ==========================================
-            // 4. INSERÇÃO: EMPRESA_ACESSIBILIDADE
-            // ==========================================
             if (novaEmpresa.Acessibilidade != null)
             {
                 var sqlAcs = @"
@@ -785,9 +744,6 @@ public class Conexao
                 await cmdAcs.ExecuteNonQueryAsync();
             }
 
-            // ==========================================
-            // 5. INSERÇÃO: EMPRESA_PESQUISA
-            // ==========================================
             if (novaEmpresa.DadosPesquisa != null)
             {
                 var sqlPsq = @"
@@ -821,15 +777,11 @@ public class Conexao
                 await cmdPsq.ExecuteNonQueryAsync();
             }
 
-            // Confirma todas as inserções no banco
             await transaction.CommitAsync();
-            
-            // Retorna o ID gerado para que o frontend saiba qual objeto foi criado
             return idEmpresaGerado;
         }
         catch
         {
-            // Se houver qualquer falha (ex: violação de FK, falta de dados), desfaz tudo
             await transaction.RollbackAsync();
             throw;
         }
@@ -837,25 +789,19 @@ public class Conexao
 
     public async Task<bool> AtualizarEmpresaCompleta(EmpresaCompletaDTO novaEmpresa)
     {
-        // 1. Busca o estado atual no banco ANTES de abrir a transação
         var estadoAtual = await PegarEmpresaCompletaPorId(novaEmpresa.DadosGerais.IdEmpresa);
         if (estadoAtual == null) 
             return false;
 
-        var conn = await CriarConexao();
-        
-        // 2. Inicia a transação (Tudo ou Nada)
+        // CORRIGIDO: Adicionado await using
+        await using var conn = await CriarConexao();
         await using var transaction = await conn.BeginTransactionAsync();
 
         try
         {
-            // Função auxiliar para tratar nulos (DBNull.Value) de forma limpa
             void AddParam(NpgsqlCommand cmd, string nome, object? valor) 
                 => cmd.Parameters.AddWithValue(nome, valor ?? DBNull.Value);
 
-            // ==========================================
-            // ATUALIZAÇÃO: EMPRESA_GERAL
-            // ==========================================
             if (MudouAlgo(estadoAtual.DadosGerais, novaEmpresa.DadosGerais))
             {
                 var sqlGeral = @"
@@ -896,9 +842,6 @@ public class Conexao
                 }
             }
 
-            // ==========================================
-            // HISTÓRICO: EMPRESA_ESTRUTURA
-            // ==========================================
             if (MudouAlgo(estadoAtual.EstruturaAtual, novaEmpresa.EstruturaAtual))
             {
                 var sqlEst = @"
@@ -932,9 +875,6 @@ public class Conexao
                 await cmdEst.ExecuteNonQueryAsync();
             }
 
-            // ==========================================
-            // HISTÓRICO: EMPRESA_SERVICOS
-            // ==========================================
             if (MudouAlgo(estadoAtual.Servicos, novaEmpresa.Servicos))
             {
                 var sqlSrv = @"
@@ -967,9 +907,6 @@ public class Conexao
                 await cmdSrv.ExecuteNonQueryAsync();
             }
 
-            // ==========================================
-            // HISTÓRICO: EMPRESA_ACESSIBILIDADE
-            // ==========================================
             if (MudouAlgo(estadoAtual.Acessibilidade, novaEmpresa.Acessibilidade))
             {
                 var sqlAcs = @"
@@ -1008,9 +945,6 @@ public class Conexao
                 await cmdAcs.ExecuteNonQueryAsync();
             }
 
-            // ==========================================
-            // HISTÓRICO: EMPRESA_PESQUISA
-            // ==========================================
             if (MudouAlgo(estadoAtual.DadosPesquisa, novaEmpresa.DadosPesquisa))
             {
                 var sqlPsq = @"
@@ -1044,13 +978,11 @@ public class Conexao
                 await cmdPsq.ExecuteNonQueryAsync();
             }
 
-            // Se chegou até aqui sem erros, confirma as alterações!
             await transaction.CommitAsync();
             return true;
         }
         catch
         {
-            // Se der qualquer erro em qualquer insert/update, desfaz tudo.
             await transaction.RollbackAsync();
             throw;
         }

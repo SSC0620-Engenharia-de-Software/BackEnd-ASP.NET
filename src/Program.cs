@@ -149,16 +149,16 @@ app.MapGet("/DadosEmpresa", async (int id, Conexao db) =>
     catch (Exception ex)
     {
         // Se der erro no banco, retorna um erro 500 para o frontend entender
-        return Results.Problem($"Erro ao fazer os dados da empresa: {ex.Message}");
+        return Results.Problem($"Erro ao buscar os dados da empresa: {ex.Message}");
     }
 });
 
-app.MapGet("/DadosPesquisaHospedagem", async (int id, Conexao db) =>
+app.MapGet("/DadosPesquisaHospedagem", async (string coluna, Conexao db) =>
 {
     try
     {
         // Chama a função do banco passando o objeto que chegou do frontend
-        Dictionary<int, List<PesquisaHospedagemDTO>> res = await db.PegarHistoricoPesquisaHospedagem();
+        Dictionary<int, List<PesquisaHospedagemColunaDTO>> res = await db.PegarHistoricoDeUmaColuna(coluna);
         
         // Retorna o status 200 (Ok)
         return Results.Ok(res);
@@ -166,7 +166,7 @@ app.MapGet("/DadosPesquisaHospedagem", async (int id, Conexao db) =>
     catch (Exception ex)
     {
         // Se der erro no banco, retorna um erro 500 para o frontend entender
-        return Results.Problem($"Erro ao fazer o login: {ex.Message}");
+        return Results.Problem($"Erro ao buscar os dados da pesquisa de hospedagem: {ex.Message}");
     }
 });
 
@@ -197,13 +197,32 @@ app.MapPost("/CadastrarPesquisaHospedagem", async (PesquisaHospedagemDTO dados, 
         // Retorna o status 201 Created com o link de localização ajustado para o padrão
         return Results.Created($"/PesquisaHospedagem?id={novoId}", new { 
             id = novoId, 
-            mensagem = "Pesquisa registrada com sucesso!" 
+            mensagem = "Pesquisa de hospedagem registrada com sucesso!" 
         });
     }
     catch (Exception ex)
     {
         // Captura falhas estruturais ou de duplicidade retornando o erro formatado
-        return Results.Problem($"Erro ao registrar a pesquisa: {ex.Message}");
+        return Results.Problem($"Erro ao registrar a pesquisa de hospedagem: {ex.Message}");
+    }
+});
+
+app.MapPost("/AtualizarPesquisaHospedagem", async (int idEmpresa, string coluna, PesquisaHospedagemColunaDTO novosDados, Conexao db) =>
+{
+    try
+    {
+        // Chama a função do banco passando o objeto que chegou do frontend
+        if (await db.AtualizarColunaPesquisaHospedagem(idEmpresa, coluna, novosDados))
+            // Retorna o status HTTP 200 (Ok)
+            return Results.Ok();
+        
+        return Results.NotFound(new { mensagem = "Não foi encontrado nenhum registro de pesquisa de hospedagem " +
+                                                    "para esta empresa nesta data." });
+    }
+    catch (Exception ex)
+    {
+        // Se der erro no banco, retorna um erro 500 para o frontend entender
+        return Results.Problem($"Erro ao atualizar os dados da pesquisa de hospedagem: {ex.Message}");
     }
 });
 
@@ -239,10 +258,11 @@ app.MapPost("/AtualizarEmpresa", async (EmpresaCompletaDTO novosDados, Conexao d
     try
     {
         // Chama a função do banco passando o objeto que chegou do frontend
-        await db.AtualizarEmpresaCompleta(novosDados);
-        
-        // Retorna o status HTTP 200 (Ok)
-        return Results.Ok();
+        if (await db.AtualizarEmpresaCompleta(novosDados))
+            // Retorna o status HTTP 200 (Ok)
+            return Results.Ok();
+
+        return Results.NotFound(new { mensagem = "Não foi encontrado nenhum registro de empresa com este id." });
     }
     catch (Exception ex)
     {

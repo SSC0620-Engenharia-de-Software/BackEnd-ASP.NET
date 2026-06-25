@@ -40,6 +40,12 @@ public class PesquisaHospedagemDTO
     public int? QtdUhs { get; set; }
 }
 
+public class PesquisaHospedagemColunaDTO
+{
+    public DateTime Data { get; set; }
+    public decimal? Valor { get; set; } // decimal suporta tanto a DiariaMedia quanto a QtdHospedes
+}
+
 public class EmpresaCompletaDTO
 {
     public EmpresaGeralDTO DadosGerais { get; set; }
